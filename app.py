@@ -15,7 +15,6 @@ DB_FILE = "exercices_rugby.json"
 CONFIG_FILE = "config_app.json"
 IMAGE_DIR = "exercise_images"
 
-# Création du dossier d'images s'il n'existe pas
 if not os.path.exists(IMAGE_DIR):
   os.makedirs(IMAGE_DIR)
 
@@ -56,8 +55,23 @@ def save_config(config):
     json.dump(config, f, ensure_ascii=False, indent=4)
 
 
+def load_data():
+  if os.path.exists(DB_FILE):
+    with open(DB_FILE, "r", encoding="utf-8") as f:
+      return json.load(f)
+  return []
+
+
+def save_all_data(data):
+  with open(DB_FILE, "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False, indent=4)
+
+
 if "page" not in st.session_state:
   st.session_state.page = "home"
+
+if "edit_exo_idx" not in st.session_state:
+  st.session_state.edit_exo_idx = None
 
 config = load_config()
 
@@ -65,7 +79,6 @@ config = load_config()
 st.markdown(
     f"""
     <style>
-    /* Fond principal */
     .stApp {{
         background-color: {config['bg_color']};
         color: #ffffff !important;
@@ -77,19 +90,16 @@ st.markdown(
         padding-bottom: 2rem !important;
     }}
 
-    /* Labels des formulaires & champs (Haute lisibilité) */
     label, .stWidgetLabel, div[data-testid="stMarkdownContainer"] p {{
         color: #f0f0f0 !important;
         font-weight: 600 !important;
         font-size: 0.95rem !important;
     }}
     
-    /* Textes d'aide et zones d'upload */
     .stFileUploader small, div[data-testid="stUploadDropzone"] span {{
         color: #d0d0d0 !important;
     }}
 
-    /* Titres et en-tête */
     .main-header {{
         text-align: center;
         margin-bottom: 25px;
@@ -108,7 +118,6 @@ st.markdown(
         margin-top: 5px;
     }}
 
-    /* Boutons de navigation */
     .stButton>button {{
         width: 100% !important;
         background-color: {config['btn_color']} !important;
@@ -126,7 +135,6 @@ st.markdown(
         filter: brightness(1.1);
     }}
 
-    /* Cartes d'exercices */
     .exo-card {{
         background-color: {config['card_bg']};
         border-radius: 8px;
@@ -144,21 +152,6 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
-
-
-def load_data():
-  if os.path.exists(DB_FILE):
-    with open(DB_FILE, "r", encoding="utf-8") as f:
-      return json.load(f)
-  return []
-
-
-def save_exercice(exo):
-  data = load_data()
-  data.append(exo)
-  with open(DB_FILE, "w", encoding="utf-8") as f:
-    json.dump(data, f, ensure_ascii=False, indent=4)
-
 
 # --- EN-TÊTE CENTRÉ ---
 st.markdown(
@@ -204,6 +197,7 @@ if st.session_state.page == "home":
 if st.session_state.page != "home":
   if st.button("⬅️ Retour à l'accueil"):
     st.session_state.page = "home"
+    st.session_state.edit_exo_idx = None
     st.rerun()
   st.markdown("---")
 
@@ -332,7 +326,7 @@ if st.session_state.page == "seance":
     st.metric("Durée Totale Estimée", f"{total_duration} min")
 
 # -----------------------------------------------------------------------------
-# 3. BANQUE D'EXERCICES
+# 3. BANQUE D'EXERCICES (AVEC ÉDITION & SUPPRESSION)
 # -----------------------------------------------------------------------------
 elif st.session_state.page == "banque":
   st.header("📚 Banque d'Exercices")
@@ -344,22 +338,18 @@ elif st.session_state.page == "banque":
     )
     type_filter = st.selectbox("Filtrer par Type :", ["Tous"] + TYPES_EXERCICE)
 
-    filtered_data = data
-    if grp_filter != "Tous":
-      filtered_data = [
-          e for e in filtered_data if e.get("groupe") == grp_filter
-      ]
-    if type_filter != "Tous":
-      filtered_data = [
-          e for e in filtered_data if e.get("type") == type_filter
-      ]
+    for real_idx, exo in enumerate(data):
+      if grp_filter != "Tous" and exo.get("groupe") != grp_filter:
+        continue
+      if type_filter != "Tous" and exo.get("type") != type_filter:
+        continue
 
-    for exo in filtered_data:
       badge = (
           "🐗"
           if exo.get("groupe") == "Avants"
           else ("⚡" if exo.get("groupe") == "Arrières" else "🤝")
       )
+
       with st.expander(
           f"{badge} {exo['titre']} — {exo.get('groupe', 'N/A')} ({exo['duree']}"
           " min)"
@@ -375,33 +365,100 @@ elif st.session_state.page == "banque":
               use_container_width=True,
           )
 
+        col1, col2 = st.columns(2)
+        with col1:
+          if st.button("✏️ Modifier", key=f"edit_{real_idx}"):
+            st.session_state.edit_exo_idx = real_idx
+            st.session_state.page = "ajouter"
+            st.rerun()
+
+        with col2:
+          if st.button("🗑️ Supprimer", key=f"del_{real_idx}"):
+            # Suppression de l'image si présente
+            if exo.get("image_path") and os.path.exists(exo["image_path"]):
+              try:
+                os.remove(exo["image_path"])
+              except OSError:
+                pass
+
+            data.pop(real_idx)
+            save_all_data(data)
+            st.success(f"Exercice '{exo['titre']}' supprimé !")
+            st.rerun()
+  else:
+    st.info("Aucun exercice enregistré pour le moment.")
+
 # -----------------------------------------------------------------------------
-# 4. AJOUTER UN EXERCICE
+# 4. AJOUTER / MODIFIER UN EXERCICE
 # -----------------------------------------------------------------------------
 elif st.session_state.page == "ajouter":
-  st.header("➕ Ajouter un exercice")
+  data = load_data()
+  is_editing = st.session_state.edit_exo_idx is not None
 
-  with st.form("form_add_exo", clear_on_submit=True):
-    titre = st.text_input("Nom de l'exercice")
-    groupe = st.selectbox("Groupe", CATEGORIES_GROUPE)
-    type_exo = st.selectbox("Type d'exercice", TYPES_EXERCICE)
-    duree = st.number_input(
-        "Durée conseillée (minutes)", min_value=5, max_value=60, value=15
+  if is_editing:
+    st.header("✏️ Modifier l'exercice")
+    exo_to_edit = data[st.session_state.edit_exo_idx]
+  else:
+    st.header("➕ Ajouter un exercice")
+    exo_to_edit = {
+        "titre": "",
+        "groupe": CATEGORIES_GROUPE[0],
+        "type": TYPES_EXERCICE[0],
+        "duree": 15,
+        "espace": "",
+        "consignes": "",
+        "image_path": None,
+    }
+
+  with st.form("form_add_exo", clear_on_submit=False):
+    titre = st.text_input("Nom de l'exercice", value=exo_to_edit["titre"])
+
+    idx_grp = (
+        CATEGORIES_GROUPE.index(exo_to_edit["groupe"])
+        if exo_to_edit["groupe"] in CATEGORIES_GROUPE
+        else 0
     )
-    espace = st.text_input("Terrain / Matériel requis")
-    consignes = st.text_area("Consignes & Règles du jeu")
+    groupe = st.selectbox("Groupe", CATEGORIES_GROUPE, index=idx_grp)
+
+    idx_type = (
+        TYPES_EXERCICE.index(exo_to_edit["type"])
+        if exo_to_edit["type"] in TYPES_EXERCICE
+        else 0
+    )
+    type_exo = st.selectbox("Type d'exercice", TYPES_EXERCICE, index=idx_type)
+
+    duree = st.number_input(
+        "Durée conseillée (minutes)",
+        min_value=5,
+        max_value=60,
+        value=int(exo_to_edit["duree"]),
+    )
+    espace = st.text_input(
+        "Terrain / Matériel requis", value=exo_to_edit["espace"]
+    )
+    consignes = st.text_area(
+        "Consignes & Règles du jeu", value=exo_to_edit["consignes"]
+    )
 
     uploaded_file = st.file_uploader(
-        "Schéma ou image d'illustration (optionnel)",
-        type=["png", "jpg", "jpeg"],
+        "Nouveau schéma ou image (optionnel)", type=["png", "jpg", "jpeg"]
     )
 
-    submitted = st.form_submit_button("💾 Enregistrer")
+    submitted = st.form_submit_button(
+        "💾 Mettre à jour" if is_editing else "💾 Enregistrer"
+    )
 
     if submitted and titre:
-      image_path = None
+      image_path = exo_to_edit.get("image_path")
 
       if uploaded_file is not None:
+        # Suppression de l'ancienne image le cas échéant
+        if image_path and os.path.exists(image_path):
+          try:
+            os.remove(image_path)
+          except OSError:
+            pass
+
         filename = (
             f"{titre.lower().replace(' ', '_')}_{uploaded_file.name[-8:]}"
         )
@@ -409,7 +466,7 @@ elif st.session_state.page == "ajouter":
         with open(image_path, "wb") as f:
           f.write(uploaded_file.getbuffer())
 
-      new_exo = {
+      updated_exo = {
           "titre": titre,
           "groupe": groupe,
           "type": type_exo,
@@ -418,8 +475,18 @@ elif st.session_state.page == "ajouter":
           "consignes": consignes,
           "image_path": image_path,
       }
-      save_exercice(new_exo)
-      st.success(f"L'exercice '{titre}' a été ajouté avec succès !")
+
+      if is_editing:
+        data[st.session_state.edit_exo_idx] = updated_exo
+        st.session_state.edit_exo_idx = None
+        st.success(f"L'exercice '{titre}' a été mis à jour !")
+      else:
+        data.append(updated_exo)
+        st.success(f"L'exercice '{titre}' a été ajouté !")
+
+      save_all_data(data)
+      st.session_state.page = "banque"
+      st.rerun()
 
 # -----------------------------------------------------------------------------
 # 5. PARAMÈTRES
