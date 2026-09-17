@@ -88,7 +88,6 @@ def calculate_total_duration(blocks):
 
 
 def build_grouped_blocks(blocks):
-  """Regroupe les blocs simultanés consécutifs par paire pour l'affichage côte à côte."""
   grouped = []
   i = 0
   while i < len(blocks):
@@ -414,7 +413,6 @@ elif st.session_state.page == "ajouter":
 elif st.session_state.page == "seance":
   data = load_data()
 
-  # Formulaire rapide de création d'exercice
   if st.session_state.quick_create_mode:
     st.subheader("⚡ Créer et insérer un nouvel exercice")
     with st.form("form_quick_add_exo"):
@@ -480,7 +478,6 @@ elif st.session_state.page == "seance":
     titre_seance = st.text_input("Thème de la séance", "Séance du jour")
     titles_list = [f"{e['titre']} [{e['type']}]" for e in data]
 
-    # Barres d'actions haut de page
     col_a1, col_a2, col_a3 = st.columns([1.5, 1.8, 1])
     with col_a1:
       if st.button("➕ Ajouter exo"):
@@ -502,7 +499,6 @@ elif st.session_state.page == "seance":
 
     st.markdown("---")
 
-    # Liste simplifiée et épurée des blocs
     blocks_to_remove = []
     for idx, block in enumerate(st.session_state.seance_blocks):
       c_sel, c_dur, c_sim, c_opt = st.columns([3.5, 1.5, 1.5, 1])
@@ -532,13 +528,16 @@ elif st.session_state.page == "seance":
         )
 
       with c_sim:
-        block["simultané"] = st.checkbox(
+        # Synchronisation immédiate de l'état "simultané"
+        sim_val = st.checkbox(
             "⚡ Simultané",
             value=block.get("simultané", False),
             key=f"b_sim_{idx}",
         )
+        if sim_val != block.get("simultané", False):
+          block["simultané"] = sim_val
+          st.rerun()
 
-      # Menu contextuel d'options épuré (popover)
       with c_opt:
         with st.popover("⚙️"):
           if idx > 0 and st.button("⬆️ Monter", key=f"up_{idx}"):
@@ -586,7 +585,6 @@ elif st.session_state.page == "seance":
         st.session_state.seance_blocks.pop(b_idx)
       st.rerun()
 
-    # SECTION APERÇU ET ACTIONS FINALES
     if st.session_state.seance_blocks:
       st.markdown("---")
       total_duree = calculate_total_duration(st.session_state.seance_blocks)
@@ -594,7 +592,6 @@ elif st.session_state.page == "seance":
 
       st.markdown("### 📄 Aperçu de la séance")
 
-      # Visualisation côte à côte dans Streamlit
       grouped = build_grouped_blocks(st.session_state.seance_blocks)
       exo_counter = 1
 
