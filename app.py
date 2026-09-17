@@ -98,10 +98,7 @@ def save_exercice(exo):
 col_logo, col_header = st.columns([1, 4])
 with col_logo:
     # Remplace l'URL ci-dessous par le lien vers le logo de ton club si tu en as un
-    st.image(
-        "https://upload.wikimedia.org/wikipedia/commons/ thumb/8/87/Rugby_ball_icon.svg/240px-Rugby_ball_icon.svg.png",
-        width=80,
-    )
+    st.image("images.png", width=80)    )
 with col_header:
     st.markdown(
         "<h1 class='main-title'>RUGBY COACH APP</h1>", unsafe_allow_html=True
