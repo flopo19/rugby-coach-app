@@ -72,9 +72,12 @@ if "edit_exo_idx" not in st.session_state:
 if "seance_blocks" not in st.session_state:
   st.session_state.seance_blocks = []
 
+if "print_mode" not in st.session_state:
+  st.session_state.print_mode = False
+
 config = load_config()
 
-# --- STYLES CSS SOBRES ET HAUT CONTRASTE ---
+# --- STYLES CSS SOBRES ET HAUT CONTRASTE + STYLE IMPRESSION ---
 st.markdown(
     """
     <style>
@@ -84,7 +87,7 @@ st.markdown(
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     .block-container {
-        max-width: 680px !important;
+        max-width: 720px !important;
         padding-top: 1.5rem !important;
         padding-bottom: 2rem !important;
     }
@@ -140,7 +143,6 @@ st.markdown(
         border-color: #ffffff !important;
     }
 
-    /* CONTRASTE MAXIMUM POUR LE BOUTON D'ENREGISTREMENT */
     div[data-testid="stFormSubmitButton"] > button {
         background-color: #ffffff !important;
         color: #000000 !important;
@@ -167,12 +169,41 @@ st.markdown(
         margin-bottom: 12px;
     }
 
-    div[data-testid="stUploadDropzone"] {
-        background-color: #1a1a1a !important;
-        border: 1px dashed #555555 !important;
-    }
-    div[data-testid="stUploadDropzone"] span {
-        color: #cccccc !important;
+    /* CSS SPÉCIFIQUE IMPRESSION / DEUX COLONNES */
+    @media print {
+        body, .stApp {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+        }
+        .no-print, header, footer, .stButton {
+            display: none !important;
+        }
+        .block-container {
+            max-width: 100% !important;
+            padding: 0 !important;
+        }
+        .print-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .print-card {
+            border: 1px solid #000000 !important;
+            padding: 10px !important;
+            page-break-inside: avoid;
+            background-color: #ffffff !important;
+            color: #000000 !important;
+        }
+        .print-card * {
+            color: #000000 !important;
+        }
+        .print-title {
+            font-size: 1.1rem !important;
+            font-weight: bold !important;
+            border-bottom: 1px solid #000;
+            padding-bottom: 4px;
+            margin-bottom: 6px;
+        }
     }
 
     #MainMenu {visibility: hidden;}
@@ -182,21 +213,23 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# En-tête
-st.markdown(
-    f"""
-    <div class="main-header">
-        <h1 class="main-title">🏉 {config['nom_equipe']}</h1>
-        <p class="sub-title">Gestionnaire de Séances & Banque d'Exercices</p>
-    </div>
-""",
-    unsafe_allow_html=True,
-)
+# En-tête (Masqué en mode impression pure)
+if not st.session_state.print_mode:
+  st.markdown(
+      f"""
+      <div class="main-header">
+          <h1 class="main-title">🏉 {config['nom_equipe']}</h1>
+          <p class="sub-title">Gestionnaire de Séances & Banque d'Exercices</p>
+      </div>
+  """,
+      unsafe_allow_html=True,
+  )
 
 # -----------------------------------------------------------------------------
 # NAVIGATION
 # -----------------------------------------------------------------------------
 if st.session_state.page == "home":
+  st.session_state.print_mode = False
   st.write("")
   if st.button("📋 Créer une Séance", key="btn_seance"):
     st.session_state.page = "seance"
@@ -221,7 +254,7 @@ if st.session_state.page == "home":
     st.session_state.page = "parametres"
     st.rerun()
 
-if st.session_state.page != "home":
+if st.session_state.page != "home" and not st.session_state.print_mode:
   if st.button("⬅️ Retour à l'accueil"):
     st.session_state.page = "home"
     st.session_state.edit_exo_idx = None
@@ -262,6 +295,7 @@ if st.session_state.page == "banque":
       with st.expander(
           f"{exo['titre']} — {exo.get('groupe', 'N/A')} ({exo['duree']} min)"
       ):
+        st.write(f"**Groupe :** {exo.get('groupe', 'N/A')}")
         st.write(f"**Type :** {exo.get('type', 'N/A')}")
         st.write(f"**Espace / Matériel :** {exo['espace']}")
         st.write(f"**Consignes :** {exo['consignes']}")
@@ -294,7 +328,7 @@ if st.session_state.page == "banque":
     st.info("Aucun exercice enregistré pour le moment.")
 
 # -----------------------------------------------------------------------------
-# 2. CREER / MODIFIER UN EXERCICE
+# 2. CRÉER / MODIFIER UN EXERCICE
 # -----------------------------------------------------------------------------
 elif st.session_state.page == "ajouter":
   data = load_data()
@@ -323,7 +357,7 @@ elif st.session_state.page == "ajouter":
         if exo_to_edit["groupe"] in CATEGORIES_GROUPE
         else 0
     )
-    groupe = st.selectbox("Groupe", CATEGORIES_GROUPE, index=idx_grp)
+    groupe = st.selectbox("Groupe concerné", CATEGORIES_GROUPE, index=idx_grp)
 
     idx_type = (
         TYPES_EXERCICE.index(exo_to_edit["type"])
@@ -399,131 +433,198 @@ elif st.session_state.page == "ajouter":
 # 3. CRÉATION DE SÉANCE SÉQUENTIELLE
 # -----------------------------------------------------------------------------
 elif st.session_state.page == "seance":
-  st.subheader("📋 Créer une Séance Libre")
   data = load_data()
 
   if not data:
     st.info("La banque d'exercices est vide. Ajoutez d'abord des exercices.")
   else:
-    titre_seance = st.text_input("Thème de la séance", "Séance du jour")
-    titles_list = [f"{e['titre']} [{e['type']}]" for e in data]
+    # MODE AFFICHAGE/IMPRESSION COMPACT (2 COLONNES)
+    if st.session_state.print_mode:
+      st.markdown(f"# 🏉 {config['nom_equipe']}")
+      st.markdown(
+          f"### Séance : {st.session_state.get('titre_seance', 'Sans titre')}"
+      )
 
-    st.markdown("### 1. Sélection et ordonnancement")
+      total_dur = sum(b["duree"] for b in st.session_state.seance_blocks)
+      st.markdown(f"**Durée totale :** {total_dur} min")
+      st.markdown("---")
 
-    col_btn_add, col_btn_clear = st.columns([2, 1])
-    with col_btn_add:
-      if st.button("➕ Ajouter un exercice à la séance"):
-        st.session_state.seance_blocks.append({
-            "exo_title": titles_list[0],
-            "duree": 15,
-            "groupe_custom": "Tout le groupe",
-        })
-        st.rerun()
-
-    with col_btn_clear:
-      if st.session_state.seance_blocks and st.button("➖ Vider la séance"):
-        st.session_state.seance_blocks = []
-        st.rerun()
-
-    blocks_to_remove = []
-    for idx, block in enumerate(st.session_state.seance_blocks):
-      st.markdown(f"--- **Exercice {idx+1}** ---")
-      c_exo, c_grp, c_dur = st.columns([3, 2, 2])
-
-      with c_exo:
-        sel_idx = (
-            titles_list.index(block["exo_title"])
-            if block["exo_title"] in titles_list
-            else 0
-        )
-        block["exo_title"] = st.selectbox(
-            "Exercice", titles_list, index=sel_idx, key=f"blk_exo_{idx}"
-        )
-
-      with c_grp:
-        block["groupe_custom"] = st.text_input(
-            "Groupe concerné",
-            value=block.get("groupe_custom", "Tout le groupe"),
-            key=f"blk_grp_{idx}",
-        )
-
-      with c_dur:
-        block["duree"] = st.number_input(
-            "Durée (min)",
-            min_value=1,
-            max_value=90,
-            value=int(block["duree"]),
-            key=f"blk_dur_{idx}",
-        )
-
-      col_up, col_down, col_del = st.columns(3)
-      with col_up:
-        if idx > 0 and st.button("⬆️ Monter", key=f"up_{idx}"):
-          st.session_state.seance_blocks[idx], (
-              st.session_state.seance_blocks[idx - 1]
-          ) = (
-              st.session_state.seance_blocks[idx - 1],
-              st.session_state.seance_blocks[idx],
-          )
-          st.rerun()
-
-      with col_down:
-        if (
-            idx < len(st.session_state.seance_blocks) - 1
-            and st.button("⬇️ Descendre", key=f"down_{idx}")
-        ):
-          st.session_state.seance_blocks[idx], (
-              st.session_state.seance_blocks[idx + 1]
-          ) = (
-              st.session_state.seance_blocks[idx + 1],
-              st.session_state.seance_blocks[idx],
-          )
-          st.rerun()
-
-      with col_del:
-        if st.button("➖ Retirer de la séance", key=f"rm_{idx}"):
-          blocks_to_remove.append(idx)
-
-    if blocks_to_remove:
-      for b_idx in reversed(blocks_to_remove):
-        st.session_state.seance_blocks.pop(b_idx)
-      st.rerun()
-
-    st.markdown("---")
-    st.markdown(f"### 📄 Déroulé : {titre_seance}")
-
-    total_duree = 0
-    if st.session_state.seance_blocks:
+      # Affichage sous forme de grille CSS à 2 colonnes pour l'impression / export PDF
+      cards_html = "<div class='print-grid'>"
       for idx, block in enumerate(st.session_state.seance_blocks):
         clean_title = block["exo_title"].split(" [")[0]
         exo = next((e for e in data if e["titre"] == clean_title), None)
-
         if exo:
-          total_duree += block["duree"]
-          st.markdown(
-              f"""
-                <div class='exo-card'>
-                    <strong style='color:#ffffff; font-size:1.1rem;'>{idx+1}. {exo['titre']} ({block['duree']} min)</strong><br>
-                    <span style='color:#aaaaaa;'>Groupe : {block['groupe_custom']} | Type : {exo['type']} | Espace : {exo['espace']}</span><br><br>
-                    {exo['consignes']}
-                </div>
-                """,
-              unsafe_allow_html=True,
+          cards_html += f"""
+                    <div class='print-card' style='border: 1px solid #444; padding: 10px; margin-bottom: 10px; border-radius: 4px;'>
+                        <div class='print-title'><strong>{idx+1}. {exo['titre']}</strong> ({block['duree']} min)</div>
+                        <div style='font-size: 0.85rem; color: #aaa; margin-bottom: 6px;'>
+                            <b>Groupe :</b> {exo.get('groupe', 'N/A')} | <b>Type :</b> {exo.get('type', 'N/A')}<br>
+                            <b>Matériel :</b> {exo.get('espace', 'N/A')}
+                        </div>
+                        <div style='font-size: 0.9rem;'>{exo.get('consignes', '')}</div>
+                    </div>
+                    """
+      cards_html += "</div>"
+      st.markdown(cards_html, unsafe_allow_html=True)
+
+      st.markdown("<br>", unsafe_allow_html=True)
+      col_p1, col_p2 = st.columns(2)
+      with col_p1:
+        if st.button("🖨️ Lancer l'impression (Navigateur)"):
+          st.components.v1.html(
+              "<script>window.print();</script>", height=0, width=0
+          )
+      with col_p2:
+        if st.button("⬅️ Quitter la vue d'impression"):
+          st.session_state.print_mode = False
+          st.rerun()
+
+    # MODE ÉDITION CLASSIQUE
+    else:
+      st.subheader("📋 Créer une Séance Libre")
+      titre_seance = st.text_input("Thème de la séance", "Séance du jour")
+      st.session_state.titre_seance = titre_seance
+      titles_list = [f"{e['titre']} [{e['type']}]" for e in data]
+
+      st.markdown("### 1. Sélection et ordonnancement")
+
+      col_btn_add, col_btn_clear = st.columns([2, 1])
+      with col_btn_add:
+        if st.button("➕ Ajouter un exercice à la séance"):
+          first_exo = data[0]
+          st.session_state.seance_blocks.append({
+              "exo_title": titles_list[0],
+              "duree": int(first_exo.get("duree", 15)),
+          })
+          st.rerun()
+
+      with col_btn_clear:
+        if st.session_state.seance_blocks and st.button("➖ Vider la séance"):
+          st.session_state.seance_blocks = []
+          st.rerun()
+
+      blocks_to_remove = []
+      for idx, block in enumerate(st.session_state.seance_blocks):
+        clean_title = block["exo_title"].split(" [")[0]
+        exo_current = next(
+            (e for e in data if e["titre"] == clean_title), data[0]
+        )
+
+        st.markdown(f"--- **Exercice {idx+1}** ---")
+        c_exo, c_dur = st.columns([4, 2])
+
+        with c_exo:
+          sel_idx = (
+              titles_list.index(block["exo_title"])
+              if block["exo_title"] in titles_list
+              else 0
+          )
+          new_exo_title = st.selectbox(
+              "Exercice", titles_list, index=sel_idx, key=f"blk_exo_{idx}"
           )
 
-          if exo.get("image_path") and os.path.exists(exo["image_path"]):
-            st.image(
-                exo["image_path"],
-                caption=f"Schéma : {exo['titre']}",
-                use_container_width=True,
+          if new_exo_title != block["exo_title"]:
+            new_clean_title = new_exo_title.split(" [")[0]
+            selected_exo = next(
+                (e for e in data if e["titre"] == new_clean_title), None
+            )
+            block["exo_title"] = new_exo_title
+            if selected_exo:
+              block["duree"] = int(selected_exo.get("duree", 15))
+            st.rerun()
+
+        with c_dur:
+          block["duree"] = st.number_input(
+              "Durée (min)",
+              min_value=1,
+              max_value=90,
+              value=int(block["duree"]),
+              key=f"blk_dur_{idx}",
+          )
+
+        # Rappel automatique du groupe (déjà défini dans l'exercice)
+        st.caption(
+            f"🎯 Groupe : **{exo_current.get('groupe', 'Non défini')}** | Type :"
+            f" {exo_current.get('type', 'N/A')}"
+        )
+
+        col_up, col_down, col_del = st.columns(3)
+        with col_up:
+          if idx > 0 and st.button("⬆️ Monter", key=f"up_{idx}"):
+            st.session_state.seance_blocks[idx], (
+                st.session_state.seance_blocks[idx - 1]
+            ) = (
+                st.session_state.seance_blocks[idx - 1],
+                st.session_state.seance_blocks[idx],
+            )
+            st.rerun()
+
+        with col_down:
+          if (
+              idx < len(st.session_state.seance_blocks) - 1
+              and st.button("⬇️ Descendre", key=f"down_{idx}")
+          ):
+            st.session_state.seance_blocks[idx], (
+                st.session_state.seance_blocks[idx + 1]
+            ) = (
+                st.session_state.seance_blocks[idx + 1],
+                st.session_state.seance_blocks[idx],
+            )
+            st.rerun()
+
+        with col_del:
+          if st.button("➖ Retirer de la séance", key=f"rm_{idx}"):
+            blocks_to_remove.append(idx)
+
+      if blocks_to_remove:
+        for b_idx in reversed(blocks_to_remove):
+          st.session_state.seance_blocks.pop(b_idx)
+        st.rerun()
+
+      st.markdown("---")
+      col_sec_title, col_sec_print = st.columns([1.8, 1.2])
+      with col_sec_title:
+        st.markdown(f"### 📄 Aperçu : {titre_seance}")
+      with col_sec_print:
+        if st.session_state.seance_blocks and st.button(
+            "🖨️ Vue Impression (2 col.)"
+        ):
+          st.session_state.print_mode = True
+          st.rerun()
+
+      total_duree = 0
+      if st.session_state.seance_blocks:
+        for idx, block in enumerate(st.session_state.seance_blocks):
+          clean_title = block["exo_title"].split(" [")[0]
+          exo = next((e for e in data if e["titre"] == clean_title), None)
+
+          if exo:
+            total_duree += block["duree"]
+            st.markdown(
+                f"""
+                  <div class='exo-card'>
+                      <strong style='color:#ffffff; font-size:1.1rem;'>{idx+1}. {exo['titre']} ({block['duree']} min)</strong><br>
+                      <span style='color:#aaaaaa;'>Groupe : {exo.get('groupe', 'N/A')} | Type : {exo['type']} | Espace : {exo['espace']}</span><br><br>
+                      {exo['consignes']}
+                  </div>
+                  """,
+                unsafe_allow_html=True,
             )
 
-      st.metric("Durée Totale de la Séance", f"{total_duree} min")
-    else:
-      st.info(
-          "Cliquez sur 'Ajouter un exercice à la séance' pour composer votre"
-          " programme."
-      )
+            if exo.get("image_path") and os.path.exists(exo["image_path"]):
+              st.image(
+                  exo["image_path"],
+                  caption=f"Schéma : {exo['titre']}",
+                  use_container_width=True,
+              )
+
+        st.metric("Durée Totale de la Séance", f"{total_duree} min")
+      else:
+        st.info(
+            "Cliquez sur 'Ajouter un exercice à la séance' pour composer votre"
+            " programme."
+        )
 
 # -----------------------------------------------------------------------------
 # 4. PARAMÈTRES
