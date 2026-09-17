@@ -70,35 +70,54 @@ def save_seance(seance_data):
     json.dump(seances, f, ensure_ascii=False, indent=4)
 
 
-def calculate_total_duration(blocks):
+def calculate_total_duration(blocks, data):
+  grouped = build_grouped_blocks(blocks, data)
   total = 0
-  skip_next = False
-  for i in range(len(blocks)):
-    if skip_next:
-      skip_next = False
-      continue
-    curr = blocks[i]
-    is_sim = curr.get("simultané", False)
-    if is_sim and i + 1 < len(blocks) and blocks[i + 1].get("simultané", False):
-      total += max(int(curr["duree"]), int(blocks[i + 1]["duree"]))
-      skip_next = True
-    else:
-      total += int(curr["duree"])
+  for group in grouped:
+    if group["type"] == "single":
+      total += int(group["items"][0]["duree"])
+    elif group["type"] == "parallel_groups":
+      dur_avants = sum(int(b["duree"]) for b in group["avants"])
+      dur_arrieres = sum(int(b["duree"]) for b in group["arrieres"])
+      dur_autres = sum(int(b["duree"]) for b in group["autres"])
+      total += max(dur_avants, dur_arrieres, dur_autres, 0)
   return total
 
 
-def build_grouped_blocks(blocks):
+def build_grouped_blocks(blocks, data):
+  """Regroupe les blocs par séquences : simples ou simultanées (Avants vs Arrières)."""
   grouped = []
   i = 0
   while i < len(blocks):
     curr = blocks[i]
-    if (
-        curr.get("simultané", False)
-        and i + 1 < len(blocks)
-        and blocks[i + 1].get("simultané", False)
-    ):
-      grouped.append({"type": "pair", "items": [curr, blocks[i + 1]]})
-      i += 2
+    if curr.get("simultané", False):
+      sim_sequence = []
+      while i < len(blocks) and blocks[i].get("simultané", False):
+        sim_sequence.append(blocks[i])
+        i += 1
+
+      avants_list = []
+      arrieres_list = []
+      autres_list = []
+
+      for b in sim_sequence:
+        clean_title = b["exo_title"].split(" [")[0]
+        exo = next((e for e in data if e["titre"] == clean_title), None)
+        grp = exo.get("groupe", "") if exo else ""
+
+        if grp == "Avants":
+          avants_list.append(b)
+        elif grp == "Arrières":
+          arrieres_list.append(b)
+        else:
+          autres_list.append(b)
+
+      grouped.append({
+          "type": "parallel_groups",
+          "avants": avants_list,
+          "arrieres": arrieres_list,
+          "autres": autres_list,
+      })
     else:
       grouped.append({"type": "single", "items": [curr]})
       i += 1
@@ -106,8 +125,8 @@ def build_grouped_blocks(blocks):
 
 
 def generate_export_html(titre_seance, nom_equipe, blocks, data):
-  total_dur = calculate_total_duration(blocks)
-  grouped = build_grouped_blocks(blocks)
+  total_dur = calculate_total_duration(blocks, data)
+  grouped = build_grouped_blocks(blocks, data)
 
   html_content = f"""<!DOCTYPE html>
 <html>
@@ -121,13 +140,12 @@ def generate_export_html(titre_seance, nom_equipe, blocks, data):
         .header h2 {{ margin: 5px 0 0 0; font-size: 18px; color: #555; }}
         .meta {{ font-size: 14px; font-weight: bold; margin-bottom: 15px; background: #eee; padding: 8px; border-radius: 4px; }}
         .row-single {{ margin-bottom: 12px; }}
-        .row-pair {{ display: flex; gap: 10px; margin-bottom: 12px; }}
-        .card {{ border: 1px solid #333; padding: 10px; border-radius: 6px; background: #fdfdfd; box-sizing: border-box; }}
-        .card-full {{ width: 100%; }}
-        .card-half {{ flex: 1; border-left: 4px solid #ff9800; }}
-        .card-title {{ font-weight: bold; font-size: 15px; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 6px; }}
-        .card-meta {{ font-size: 12px; color: #555; margin-bottom: 6px; }}
-        .card-body {{ font-size: 13px; line-height: 1.3; }}
+        .row-parallel {{ display: flex; gap: 15px; margin-bottom: 15px; background: #fafafa; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }}
+        .col-group {{ flex: 1; }}
+        .col-group h3 {{ margin: 0 0 8px 0; font-size: 14px; border-bottom: 2px solid #ff9800; padding-bottom: 3px; color: #d97706; }}
+        .card {{ border: 1px solid #333; padding: 8px; border-radius: 4px; background: #fff; margin-bottom: 8px; }}
+        .card-title {{ font-weight: bold; font-size: 13px; margin-bottom: 4px; }}
+        .card-body {{ font-size: 12px; color: #333; line-height: 1.3; }}
         @media print {{
             body {{ margin: 0; }}
             .no-print {{ display: none; }}
@@ -144,8 +162,8 @@ def generate_export_html(titre_seance, nom_equipe, blocks, data):
   exo_count = 1
   for group in grouped:
     if group["type"] == "single":
-      block = group["items"][0]
-      clean_title = block["exo_title"].split(" [")[0]
+      b = group["items"][0]
+      clean_title = b["exo_title"].split(" [")[0]
       exo = next((e for e in data if e["titre"] == clean_title), None)
       consignes = exo.get("consignes", "") if exo else ""
       grp_name = exo.get("groupe", "N/A") if exo else "N/A"
@@ -153,34 +171,62 @@ def generate_export_html(titre_seance, nom_equipe, blocks, data):
 
       html_content += f"""
         <div class="row-single">
-            <div class="card card-full">
-                <div class="card-title">{exo_count}. {clean_title} ({block['duree']} min)</div>
-                <div class="card-meta"><b>Groupe:</b> {grp_name} | <b>Matériel:</b> {esp}</div>
+            <div class="card">
+                <div class="card-title">{exo_count}. {clean_title} ({b['duree']} min)</div>
+                <div style="font-size:11px; color:#666; margin-bottom:4px;"><b>Groupe:</b> {grp_name} | <b>Matériel:</b> {esp}</div>
                 <div class="card-body">{consignes}</div>
             </div>
         </div>"""
       exo_count += 1
-    else:
-      html_content += '<div class="row-pair">'
-      for block in group["items"]:
-        clean_title = block["exo_title"].split(" [")[0]
-        exo = next((e for e in data if e["titre"] == clean_title), None)
-        consignes = exo.get("consignes", "") if exo else ""
-        grp_name = exo.get("groupe", "N/A") if exo else "N/A"
-        esp = exo.get("espace", "N/A") if exo else "N/A"
+    elif group["type"] == "parallel_groups":
+      html_content += '<div class="row-parallel">'
 
-        html_content += f"""
-            <div class="card card-half">
-                <div class="card-title">⚡ {exo_count}. {clean_title} ({block['duree']} min)</div>
-                <div class="card-meta"><b>Groupe:</b> {grp_name} | <b>Matériel:</b> {esp}</div>
-                <div class="card-body">{consignes}</div>
-            </div>"""
-        exo_count += 1
+      html_content += '<div class="col-group"><h3>🐗 Avants</h3>'
+      if group["avants"]:
+        for b in group["avants"]:
+          clean_title = b["exo_title"].split(" [")[0]
+          exo = next((e for e in data if e["titre"] == clean_title), None)
+          html_content += f"""
+                    <div class="card">
+                        <div class="card-title">⚡ {exo_count}. {clean_title} ({b['duree']} min)</div>
+                        <div class="card-body">{exo.get('consignes', '') if exo else ''}</div>
+                    </div>"""
+          exo_count += 1
+      else:
+        html_content += '<div style="font-size:12px; color:#888;">—</div>'
       html_content += "</div>"
 
-  html_content += """
-</body>
-</html>"""
+      html_content += '<div class="col-group"><h3>⚡ Arrières</h3>'
+      if group["arrieres"]:
+        for b in group["arrieres"]:
+          clean_title = b["exo_title"].split(" [")[0]
+          exo = next((e for e in data if e["titre"] == clean_title), None)
+          html_content += f"""
+                    <div class="card">
+                        <div class="card-title">⚡ {exo_count}. {clean_title} ({b['duree']} min)</div>
+                        <div class="card-body">{exo.get('consignes', '') if exo else ''}</div>
+                    </div>"""
+          exo_count += 1
+      else:
+        html_content += '<div style="font-size:12px; color:#888;">—</div>'
+      html_content += "</div>"
+
+      if group["autres"]:
+        html_content += '<div class="col-group"><h3>👥 Ateliers Partagés</h3>'
+        for b in group["autres"]:
+          clean_title = b["exo_title"].split(" [")[0]
+          exo = next((e for e in data if e["titre"] == clean_title), None)
+          html_content += f"""
+                    <div class="card">
+                        <div class="card-title">⚡ {exo_count}. {clean_title} ({b['duree']} min)</div>
+                        <div class="card-body">{exo.get('consignes', '') if exo else ''}</div>
+                    </div>"""
+          exo_count += 1
+        html_content += "</div>"
+
+      html_content += "</div>"
+
+  html_content += "</body></html>"
   return html_content
 
 
@@ -528,7 +574,6 @@ elif st.session_state.page == "seance":
         )
 
       with c_sim:
-        # Synchronisation immédiate de l'état "simultané"
         sim_val = st.checkbox(
             "⚡ Simultané",
             value=block.get("simultané", False),
@@ -587,12 +632,14 @@ elif st.session_state.page == "seance":
 
     if st.session_state.seance_blocks:
       st.markdown("---")
-      total_duree = calculate_total_duration(st.session_state.seance_blocks)
+      total_duree = calculate_total_duration(
+          st.session_state.seance_blocks, data
+      )
       st.metric("Durée Totale Réelle", f"{total_duree} min")
 
       st.markdown("### 📄 Aperçu de la séance")
 
-      grouped = build_grouped_blocks(st.session_state.seance_blocks)
+      grouped = build_grouped_blocks(st.session_state.seance_blocks, data)
       exo_counter = 1
 
       for group in grouped:
@@ -611,21 +658,60 @@ elif st.session_state.page == "seance":
               unsafe_allow_html=True,
           )
           exo_counter += 1
-        else:
-          col_s1, col_s2 = st.columns(2)
-          cols = [col_s1, col_s2]
-          for item_idx, b in enumerate(group["items"]):
-            clean_title = b["exo_title"].split(" [")[0]
-            exo = next((e for e in data if e["titre"] == clean_title), None)
-            with cols[item_idx]:
+
+        elif group["type"] == "parallel_groups":
+          col_av, col_arr = st.columns(2)
+
+          with col_av:
+            st.markdown("#### 🐗 Avants")
+            if group["avants"]:
+              for b in group["avants"]:
+                clean_title = b["exo_title"].split(" [")[0]
+                exo = next((e for e in data if e["titre"] == clean_title), None)
+                st.markdown(
+                    f"""
+                            <div class='exo-card exo-card-simultane'>
+                                <strong>⚡ {exo_counter}. {clean_title} ({b['duree']} min)</strong><br>
+                                <span style='font-size:0.85rem;'>{exo.get('consignes', '') if exo else ''}</span>
+                            </div>
+                            """,
+                    unsafe_allow_html=True,
+                )
+                exo_counter += 1
+            else:
+              st.caption("Aucun atelier")
+
+          with col_arr:
+            st.markdown("#### ⚡ Arrières")
+            if group["arrieres"]:
+              for b in group["arrieres"]:
+                clean_title = b["exo_title"].split(" [")[0]
+                exo = next((e for e in data if e["titre"] == clean_title), None)
+                st.markdown(
+                    f"""
+                            <div class='exo-card exo-card-simultane'>
+                                <strong>⚡ {exo_counter}. {clean_title} ({b['duree']} min)</strong><br>
+                                <span style='font-size:0.85rem;'>{exo.get('consignes', '') if exo else ''}</span>
+                            </div>
+                            """,
+                    unsafe_allow_html=True,
+                )
+                exo_counter += 1
+            else:
+              st.caption("Aucun atelier")
+
+          if group["autres"]:
+            st.markdown("#### 👥 Ateliers Partagés")
+            for b in group["autres"]:
+              clean_title = b["exo_title"].split(" [")[0]
+              exo = next((e for e in data if e["titre"] == clean_title), None)
               st.markdown(
                   f"""
-                                <div class='exo-card exo-card-simultane'>
-                                    <strong>⚡ {exo_counter}. {clean_title} ({b['duree']} min)</strong><br>
-                                    <small style='color:#aaa;'>{exo.get('groupe', '') if exo else ''}</small><br>
-                                    <span style='font-size:0.85rem;'>{exo.get('consignes', '') if exo else ''}</span>
-                                </div>
-                                """,
+                        <div class='exo-card exo-card-simultane'>
+                            <strong>⚡ {exo_counter}. {clean_title} ({b['duree']} min)</strong><br>
+                            <span style='font-size:0.85rem;'>{exo.get('consignes', '') if exo else ''}</span>
+                        </div>
+                        """,
                   unsafe_allow_html=True,
               )
               exo_counter += 1
