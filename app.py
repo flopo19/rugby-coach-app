@@ -63,6 +63,26 @@ def save_all_data(data):
     json.dump(data, f, ensure_ascii=False, indent=4)
 
 
+def calculate_total_duration(blocks):
+  """Calcule la durée totale en prenant le max pour deux exercices consécutifs en simultané."""
+  total = 0
+  skip_next = False
+  for i in range(len(blocks)):
+    if skip_next:
+      skip_next = False
+      continue
+
+    curr = blocks[i]
+    is_sim = curr.get("simultané", False)
+
+    if is_sim and i + 1 < len(blocks) and blocks[i + 1].get("simultané", False):
+      total += max(int(curr["duree"]), int(blocks[i + 1]["duree"]))
+      skip_next = True
+    else:
+      total += int(curr["duree"])
+  return total
+
+
 if "page" not in st.session_state:
   st.session_state.page = "home"
 
@@ -168,8 +188,10 @@ st.markdown(
         padding: 14px;
         margin-bottom: 12px;
     }
+    .exo-card-simultane {
+        border-left: 4px solid #ff9800 !important;
+    }
 
-    /* CSS SPÉCIFIQUE IMPRESSION / DEUX COLONNES */
     @media print {
         body, .stApp {
             background-color: #ffffff !important;
@@ -213,7 +235,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# En-tête (Masqué en mode impression pure)
+# En-tête
 if not st.session_state.print_mode:
   st.markdown(
       f"""
@@ -438,26 +460,25 @@ elif st.session_state.page == "seance":
   if not data:
     st.info("La banque d'exercices est vide. Ajoutez d'abord des exercices.")
   else:
-    # MODE AFFICHAGE/IMPRESSION COMPACT (2 COLONNES)
     if st.session_state.print_mode:
       st.markdown(f"# 🏉 {config['nom_equipe']}")
       st.markdown(
           f"### Séance : {st.session_state.get('titre_seance', 'Sans titre')}"
       )
 
-      total_dur = sum(b["duree"] for b in st.session_state.seance_blocks)
-      st.markdown(f"**Durée totale :** {total_dur} min")
+      total_dur = calculate_total_duration(st.session_state.seance_blocks)
+      st.markdown(f"**Durée totale de la séance :** {total_dur} min")
       st.markdown("---")
 
-      # Affichage sous forme de grille CSS à 2 colonnes pour l'impression / export PDF
       cards_html = "<div class='print-grid'>"
       for idx, block in enumerate(st.session_state.seance_blocks):
         clean_title = block["exo_title"].split(" [")[0]
         exo = next((e for e in data if e["titre"] == clean_title), None)
         if exo:
+          sim_tag = "⚡ (Simultané)" if block.get("simultané") else ""
           cards_html += f"""
                     <div class='print-card' style='border: 1px solid #444; padding: 10px; margin-bottom: 10px; border-radius: 4px;'>
-                        <div class='print-title'><strong>{idx+1}. {exo['titre']}</strong> ({block['duree']} min)</div>
+                        <div class='print-title'><strong>{idx+1}. {exo['titre']} {sim_tag}</strong> ({block['duree']} min)</div>
                         <div style='font-size: 0.85rem; color: #aaa; margin-bottom: 6px;'>
                             <b>Groupe :</b> {exo.get('groupe', 'N/A')} | <b>Type :</b> {exo.get('type', 'N/A')}<br>
                             <b>Matériel :</b> {exo.get('espace', 'N/A')}
@@ -480,7 +501,6 @@ elif st.session_state.page == "seance":
           st.session_state.print_mode = False
           st.rerun()
 
-    # MODE ÉDITION CLASSIQUE
     else:
       st.subheader("📋 Créer une Séance Libre")
       titre_seance = st.text_input("Thème de la séance", "Séance du jour")
@@ -491,12 +511,16 @@ elif st.session_state.page == "seance":
 
       col_btn_add, col_btn_clear = st.columns([2, 1])
       with col_btn_add:
-        if st.button("➕ Ajouter un exercice à la séance"):
+        if st.button("➕ Ajouter au début / premier exercice"):
           first_exo = data[0]
-          st.session_state.seance_blocks.append({
-              "exo_title": titles_list[0],
-              "duree": int(first_exo.get("duree", 15)),
-          })
+          st.session_state.seance_blocks.insert(
+              0,
+              {
+                  "exo_title": titles_list[0],
+                  "duree": int(first_exo.get("duree", 15)),
+                  "simultané": False,
+              },
+          )
           st.rerun()
 
       with col_btn_clear:
@@ -505,6 +529,8 @@ elif st.session_state.page == "seance":
           st.rerun()
 
       blocks_to_remove = []
+      insert_index = None
+
       for idx, block in enumerate(st.session_state.seance_blocks):
         clean_title = block["exo_title"].split(" [")[0]
         exo_current = next(
@@ -543,7 +569,14 @@ elif st.session_state.page == "seance":
               key=f"blk_dur_{idx}",
           )
 
-        # Rappel automatique du groupe (déjà défini dans l'exercice)
+        # CASE À COCHER SIMULTANÉ (Atelier Avants / Arrières parallèles)
+        block["simultané"] = st.checkbox(
+            "⚡ En simultané avec le bloc adjacent (ne double pas le décompte"
+            " temps)",
+            value=block.get("simultané", False),
+            key=f"sim_{idx}",
+        )
+
         st.caption(
             f"🎯 Groupe : **{exo_current.get('groupe', 'Non défini')}** | Type :"
             f" {exo_current.get('type', 'N/A')}"
@@ -574,8 +607,26 @@ elif st.session_state.page == "seance":
             st.rerun()
 
         with col_del:
-          if st.button("➖ Retirer de la séance", key=f"rm_{idx}"):
+          if st.button("➖ Retirer", key=f"rm_{idx}"):
             blocks_to_remove.append(idx)
+
+        if st.button(
+            f"➕ Insérer un exercice après l'exercice {idx+1}",
+            key=f"add_after_{idx}",
+        ):
+          insert_index = idx + 1
+
+      if insert_index is not None:
+        first_exo = data[0]
+        st.session_state.seance_blocks.insert(
+            insert_index,
+            {
+                "exo_title": titles_list[0],
+                "duree": int(first_exo.get("duree", 15)),
+                "simultané": False,
+            },
+        )
+        st.rerun()
 
       if blocks_to_remove:
         for b_idx in reversed(blocks_to_remove):
@@ -593,18 +644,20 @@ elif st.session_state.page == "seance":
           st.session_state.print_mode = True
           st.rerun()
 
-      total_duree = 0
       if st.session_state.seance_blocks:
         for idx, block in enumerate(st.session_state.seance_blocks):
           clean_title = block["exo_title"].split(" [")[0]
           exo = next((e for e in data if e["titre"] == clean_title), None)
 
           if exo:
-            total_duree += block["duree"]
+            is_sim = block.get("simultané", False)
+            sim_badge = " ⚡ [SIMULTANÉ]" if is_sim else ""
+            card_class = "exo-card exo-card-simultane" if is_sim else "exo-card"
+
             st.markdown(
                 f"""
-                  <div class='exo-card'>
-                      <strong style='color:#ffffff; font-size:1.1rem;'>{idx+1}. {exo['titre']} ({block['duree']} min)</strong><br>
+                  <div class='{card_class}'>
+                      <strong style='color:#ffffff; font-size:1.1rem;'>{idx+1}. {exo['titre']} ({block['duree']} min){sim_badge}</strong><br>
                       <span style='color:#aaaaaa;'>Groupe : {exo.get('groupe', 'N/A')} | Type : {exo['type']} | Espace : {exo['espace']}</span><br><br>
                       {exo['consignes']}
                   </div>
@@ -619,12 +672,17 @@ elif st.session_state.page == "seance":
                   use_container_width=True,
               )
 
-        st.metric("Durée Totale de la Séance", f"{total_duree} min")
-      else:
-        st.info(
-            "Cliquez sur 'Ajouter un exercice à la séance' pour composer votre"
-            " programme."
+        total_duree = calculate_total_duration(st.session_state.seance_blocks)
+        st.metric(
+            "Durée Totale Réelle de la Séance",
+            f"{total_duree} min",
+            help=(
+                "Les ateliers cochés 'simultané' consécutifs prennent la durée"
+                " max du groupe au lieu de s'additionner."
+            ),
         )
+      else:
+        st.info("Ajoutez des exercices pour composer votre programme.")
 
 # -----------------------------------------------------------------------------
 # 4. PARAMÈTRES
