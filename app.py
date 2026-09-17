@@ -95,6 +95,12 @@ if "seance_blocks" not in st.session_state:
 if "print_mode" not in st.session_state:
   st.session_state.print_mode = False
 
+if "quick_create_mode" not in st.session_state:
+  st.session_state.quick_create_mode = False
+
+if "quick_create_insert_idx" not in st.session_state:
+  st.session_state.quick_create_insert_idx = None
+
 config = load_config()
 
 # --- STYLES CSS SOBRES ET HAUT CONTRASTE + STYLE IMPRESSION ---
@@ -252,6 +258,7 @@ if not st.session_state.print_mode:
 # -----------------------------------------------------------------------------
 if st.session_state.page == "home":
   st.session_state.print_mode = False
+  st.session_state.quick_create_mode = False
   st.write("")
   if st.button("📋 Créer une Séance", key="btn_seance"):
     st.session_state.page = "seance"
@@ -261,7 +268,7 @@ if st.session_state.page == "home":
     st.session_state.page = "banque"
     st.rerun()
 
-  if st.button("➕ Ajouter un Exercice", key="btn_ajouter"):
+  if st.button("➕ Ajouter un Exercice à la banque", key="btn_ajouter"):
     st.session_state.edit_exo_idx = None
     st.session_state.page = "ajouter"
     st.rerun()
@@ -280,6 +287,7 @@ if st.session_state.page != "home" and not st.session_state.print_mode:
   if st.button("⬅️ Retour à l'accueil"):
     st.session_state.page = "home"
     st.session_state.edit_exo_idx = None
+    st.session_state.quick_create_mode = False
     st.rerun()
   st.markdown(
       "<hr style='border: none; border-top: 1px solid #222; margin: 15px"
@@ -314,9 +322,7 @@ if st.session_state.page == "banque":
       if type_filter != "Tous" and exo.get("type") != type_filter:
         continue
 
-      with st.expander(
-          f"{exo['titre']} — {exo.get('groupe', 'N/A')} ({exo['duree']} min)"
-      ):
+      with st.expander(f"{exo['titre']} — {exo.get('groupe', 'N/A')}"):
         st.write(f"**Groupe :** {exo.get('groupe', 'N/A')}")
         st.write(f"**Type :** {exo.get('type', 'N/A')}")
         st.write(f"**Espace / Matériel :** {exo['espace']}")
@@ -350,7 +356,7 @@ if st.session_state.page == "banque":
     st.info("Aucun exercice enregistré pour le moment.")
 
 # -----------------------------------------------------------------------------
-# 2. CRÉER / MODIFIER UN EXERCICE
+# 2. CRÉER / MODIFIER UN EXERCICE (BANQUE)
 # -----------------------------------------------------------------------------
 elif st.session_state.page == "ajouter":
   data = load_data()
@@ -365,7 +371,6 @@ elif st.session_state.page == "ajouter":
         "titre": "",
         "groupe": CATEGORIES_GROUPE[0],
         "type": TYPES_EXERCICE[0],
-        "duree": 15,
         "espace": "",
         "consignes": "",
         "image_path": None,
@@ -388,12 +393,6 @@ elif st.session_state.page == "ajouter":
     )
     type_exo = st.selectbox("Type d'exercice", TYPES_EXERCICE, index=idx_type)
 
-    duree = st.number_input(
-        "Durée conseillée (minutes)",
-        min_value=5,
-        max_value=60,
-        value=int(exo_to_edit["duree"]),
-    )
     espace = st.text_input(
         "Terrain / Matériel requis", value=exo_to_edit["espace"]
     )
@@ -433,7 +432,6 @@ elif st.session_state.page == "ajouter":
           "titre": titre,
           "groupe": groupe,
           "type": type_exo,
-          "duree": duree,
           "espace": espace,
           "consignes": consignes,
           "image_path": image_path,
@@ -457,8 +455,84 @@ elif st.session_state.page == "ajouter":
 elif st.session_state.page == "seance":
   data = load_data()
 
-  if not data:
-    st.info("La banque d'exercices est vide. Ajoutez d'abord des exercices.")
+  # MODAL/FORMULAIRE DE CRÉATION RAPIDE D'EXERCICE DEPUIS LA SÉANCE
+  if st.session_state.quick_create_mode:
+    st.subheader("⚡ Créer et insérer un nouvel exercice")
+
+    with st.form("form_quick_add_exo"):
+      q_titre = st.text_input("Nom de l'exercice")
+      q_groupe = st.selectbox("Groupe concerné", CATEGORIES_GROUPE)
+      q_type = st.selectbox("Type d'exercice", TYPES_EXERCICE)
+      q_duree = st.number_input(
+          "Durée pour cette séance (min)",
+          min_value=1,
+          max_value=90,
+          value=15,
+      )
+      q_espace = st.text_input("Terrain / Matériel requis")
+      q_consignes = st.text_area("Consignes & Règles du jeu")
+      q_uploaded_file = st.file_uploader(
+          "Schéma ou image (optionnel)", type=["png", "jpg", "jpeg"]
+      )
+
+      col_q1, col_q2 = st.columns(2)
+      with col_q1:
+        q_submitted = st.form_submit_button("💾 CRÉER ET INSÉRER")
+      with col_q2:
+        q_cancel = st.form_submit_button("❌ ANNULER")
+
+      if q_cancel:
+        st.session_state.quick_create_mode = False
+        st.rerun()
+
+      if q_submitted and q_titre:
+        q_image_path = None
+        if q_uploaded_file is not None:
+          filename = f"{q_titre.lower().replace(' ', '_')}_{q_uploaded_file.name[-8:]}"
+          q_image_path = os.path.join(IMAGE_DIR, filename)
+          with open(q_image_path, "wb") as f:
+            f.write(q_uploaded_file.getbuffer())
+
+        new_exo = {
+            "titre": q_titre,
+            "groupe": q_groupe,
+            "type": q_type,
+            "espace": q_espace,
+            "consignes": q_consignes,
+            "image_path": q_image_path,
+        }
+        data.append(new_exo)
+        save_all_data(data)
+
+        new_title_formatted = f"{q_titre} [{q_type}]"
+        new_block = {
+            "exo_title": new_title_formatted,
+            "duree": int(q_duree),
+            "simultané": False,
+        }
+
+        idx_insert = st.session_state.quick_create_insert_idx
+        if idx_insert is None or idx_insert >= len(
+            st.session_state.seance_blocks
+        ):
+          st.session_state.seance_blocks.append(new_block)
+        else:
+          st.session_state.seance_blocks.insert(idx_insert, new_block)
+
+        st.session_state.quick_create_mode = False
+        st.success(f"Exercice '{q_titre}' créé et inséré !")
+        st.rerun()
+
+  elif not data:
+    st.info(
+        "La banque d'exercices est vide. Vous pouvez soit créer votre premier"
+        " exercice ci-dessous, soit passer par la banque."
+    )
+    if st.button("⚡ Créer un premier exercice"):
+      st.session_state.quick_create_mode = True
+      st.session_state.quick_create_insert_idx = 0
+      st.rerun()
+
   else:
     if st.session_state.print_mode:
       st.markdown(f"# 🏉 {config['nom_equipe']}")
@@ -509,22 +583,27 @@ elif st.session_state.page == "seance":
 
       st.markdown("### 1. Sélection et ordonnancement")
 
-      col_btn_add, col_btn_clear = st.columns([2, 1])
+      col_btn_add, col_btn_new, col_btn_clear = st.columns([1.5, 1.8, 1])
       with col_btn_add:
-        if st.button("➕ Ajouter au début / premier exercice"):
-          first_exo = data[0]
+        if st.button("➕ Exercice existant"):
           st.session_state.seance_blocks.insert(
               0,
               {
                   "exo_title": titles_list[0],
-                  "duree": int(first_exo.get("duree", 15)),
+                  "duree": 15,
                   "simultané": False,
               },
           )
           st.rerun()
 
+      with col_btn_new:
+        if st.button("⚡ Créer & Insérer un exo"):
+          st.session_state.quick_create_mode = True
+          st.session_state.quick_create_insert_idx = 0
+          st.rerun()
+
       with col_btn_clear:
-        if st.session_state.seance_blocks and st.button("➖ Vider la séance"):
+        if st.session_state.seance_blocks and st.button("➖ Vider"):
           st.session_state.seance_blocks = []
           st.rerun()
 
@@ -551,28 +630,20 @@ elif st.session_state.page == "seance":
           )
 
           if new_exo_title != block["exo_title"]:
-            new_clean_title = new_exo_title.split(" [")[0]
-            selected_exo = next(
-                (e for e in data if e["titre"] == new_clean_title), None
-            )
             block["exo_title"] = new_exo_title
-            if selected_exo:
-              block["duree"] = int(selected_exo.get("duree", 15))
             st.rerun()
 
         with c_dur:
           block["duree"] = st.number_input(
-              "Durée (min)",
+              "Durée séance (min)",
               min_value=1,
               max_value=90,
-              value=int(block["duree"]),
+              value=int(block.get("duree", 15)),
               key=f"blk_dur_{idx}",
           )
 
-        # CASE À COCHER SIMULTANÉ (Atelier Avants / Arrières parallèles)
         block["simultané"] = st.checkbox(
-            "⚡ En simultané avec le bloc adjacent (ne double pas le décompte"
-            " temps)",
+            "⚡ En simultané (ne double pas le décompte temps)",
             value=block.get("simultané", False),
             key=f"sim_{idx}",
         )
@@ -610,19 +681,26 @@ elif st.session_state.page == "seance":
           if st.button("➖ Retirer", key=f"rm_{idx}"):
             blocks_to_remove.append(idx)
 
-        if st.button(
-            f"➕ Insérer un exercice après l'exercice {idx+1}",
-            key=f"add_after_{idx}",
-        ):
-          insert_index = idx + 1
+        c_ins1, c_ins2 = st.columns(2)
+        with c_ins1:
+          if st.button(
+              f"➕ Insérer existant après {idx+1}", key=f"add_after_{idx}"
+          ):
+            insert_index = idx + 1
+        with c_ins2:
+          if st.button(
+              f"⚡ Créer & Insérer après {idx+1}", key=f"new_after_{idx}"
+          ):
+            st.session_state.quick_create_mode = True
+            st.session_state.quick_create_insert_idx = idx + 1
+            st.rerun()
 
       if insert_index is not None:
-        first_exo = data[0]
         st.session_state.seance_blocks.insert(
             insert_index,
             {
                 "exo_title": titles_list[0],
-                "duree": int(first_exo.get("duree", 15)),
+                "duree": 15,
                 "simultané": False,
             },
         )
