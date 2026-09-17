@@ -18,15 +18,7 @@ if not os.path.exists(IMAGE_DIR):
   os.makedirs(IMAGE_DIR)
 
 CATEGORIES_GROUPE = ["Avants", "Arrières", "Collectif"]
-TYPES_EXERCICE = [
-    "Échauffement",
-    "Lancement / Combinaison",
-    "Duels / Appuis",
-    "Conservation / Ruck",
-    "Surnombre / 4vs4",
-    "Jeu au pied",
-    "Match / Spécifique",
-]
+TYPES_EXERCICE = ["Échauffement", "Exercices", "Opposition"]
 
 DEFAULT_CONFIG = {
     "nom_equipe": "STADE LÉONIEN",
@@ -74,11 +66,10 @@ if "edit_exo_idx" not in st.session_state:
 
 config = load_config()
 
-# --- DESIGN NOIR & BLANC ultra-lisible ---
+# --- DESIGN NOIR & BLANC SOBRE ---
 st.markdown(
     """
     <style>
-    /* Fond noir et texte blanc par défaut */
     .stApp {
         background-color: #0d0d0d !important;
         color: #ffffff !important;
@@ -90,13 +81,11 @@ st.markdown(
         padding-bottom: 2rem !important;
     }
 
-    /* Labels, titres et textes ultra lisibles */
     label, .stWidgetLabel, p, h1, h2, h3, h4, span {
         color: #ffffff !important;
         font-weight: 600 !important;
     }
     
-    /* Input fields clairs sur fond noir */
     input, textarea, select, div[data-baseweb="select"] {
         background-color: #1a1a1a !important;
         color: #ffffff !important;
@@ -104,7 +93,6 @@ st.markdown(
         border-radius: 4px !important;
     }
 
-    /* En-tête minimaliste */
     .main-header {
         text-align: center;
         padding-bottom: 15px;
@@ -126,7 +114,6 @@ st.markdown(
         font-weight: 400 !important;
     }
 
-    /* Boutons sobres */
     .stButton>button {
         width: 100% !important;
         background-color: #1e1e1e !important;
@@ -145,7 +132,6 @@ st.markdown(
         border-color: #ffffff !important;
     }
 
-    /* Cartes exercices sobres */
     .exo-card {
         background-color: #141414;
         border: 1px solid #333333;
@@ -154,7 +140,6 @@ st.markdown(
         margin-bottom: 12px;
     }
 
-    /* Zone dropzone upload d'images */
     div[data-testid="stUploadDropzone"] {
         background-color: #1a1a1a !important;
         border: 1px dashed #555555 !important;
@@ -170,7 +155,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- EN-TÊTE SOBRE ---
+# --- EN-TÊTE ---
 st.markdown(
     f"""
     <div class="main-header">
@@ -281,7 +266,7 @@ if st.session_state.page == "seance":
             f"""
             <div class='exo-card'>
                 <strong style='color:#ffffff;'>🐗 Avants : {exo['titre']}</strong><br>
-                <span style='color:#aaaaaa;'>{exo['type']} | Espace : {exo['espace']}</span><br><br>
+                <span style='color:#aaaaaa;'>Type : {exo['type']} | Espace : {exo['espace']}</span><br><br>
                 {exo['consignes']}
             </div>
             """,
@@ -301,7 +286,7 @@ if st.session_state.page == "seance":
             f"""
             <div class='exo-card'>
                 <strong style='color:#ffffff;'>⚡ Arrières : {exo['titre']}</strong><br>
-                <span style='color:#aaaaaa;'>{exo['type']} | Espace : {exo['espace']}</span><br><br>
+                <span style='color:#aaaaaa;'>Type : {exo['type']} | Espace : {exo['espace']}</span><br><br>
                 {exo['consignes']}
             </div>
             """,
