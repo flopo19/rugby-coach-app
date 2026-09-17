@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import streamlit as st
@@ -6,12 +7,18 @@ import streamlit as st
 st.set_page_config(
     page_title="Rugby Coach App",
     page_icon="🏉",
-    layout="wide",
+    layout="centered",
     initial_sidebar_state="collapsed",
 )
 
 DB_FILE = "exercices_rugby.json"
 CONFIG_FILE = "config_app.json"
+IMAGE_DIR = "exercise_images"
+
+# Dossier pour les schémas / images
+if not os.path.exists(IMAGE_DIR):
+  os.makedirs(IMAGE_DIR)
+
 CATEGORIES_GROUPE = ["Avants", "Arrières", "Collectif"]
 TYPES_EXERCICE = [
     "Échauffement",
@@ -23,14 +30,13 @@ TYPES_EXERCICE = [
     "Match / Spécifique",
 ]
 
-# --- CHARGEMENT / SAUVEGARDE DE LA CONFIGURATION ---
 DEFAULT_CONFIG = {
     "nom_equipe": "MON ÉQUIPE DE RUGBY",
-    "bg_color_1": "#132a13",
-    "bg_color_2": "#31572c",
-    "bg_color_3": "#4f772d",
-    "btn_color": "#4f772d",
+    "bg_color": "#121212",
+    "card_bg": "#1e1e1e",
+    "btn_color": "#2e7d32",
     "btn_text_color": "#ffffff",
+    "text_color": "#e0e0e0",
     "logo_path": None,
 }
 
@@ -50,68 +56,68 @@ def save_config(config):
     json.dump(config, f, ensure_ascii=False, indent=4)
 
 
-# Navigation via la session state
 if "page" not in st.session_state:
   st.session_state.page = "home"
 
 config = load_config()
 
-# --- APPLIQUE LES STYLES DYNAMIQUES SELON LES PARAMÈTRES ---
+# --- CSS ÉPURÉ & RESPONSIVE ---
 st.markdown(
     f"""
     <style>
     .stApp {{
-        background: linear-gradient(135deg, {config['bg_color_1']} 0%, {config['bg_color_2']} 50%, {config['bg_color_3']} 100%);
-        color: #ecf39e;
-        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        background-color: {config['bg_color']};
+        color: {config['text_color']};
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }}
-
+    .block-container {{
+        max-width: 650px !important;
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+    }}
     .main-header {{
         text-align: center;
-        padding: 20px 0 10px 0;
+        margin-bottom: 25px;
     }}
     .main-title {{
-        color: #ecf39e;
+        color: #ffffff;
         font-size: 2.2rem;
-        font-weight: 900;
-        letter-spacing: 2px;
+        font-weight: 800;
+        letter-spacing: 1px;
         text-transform: uppercase;
         margin: 0;
-        text-shadow: 2px 2px 8px rgba(0,0,0,0.6);
     }}
     .sub-title {{
-        color: #90a955;
-        font-size: 1rem;
-        font-weight: 500;
+        color: #a0a0a0;
+        font-size: 0.95rem;
         margin-top: 5px;
     }}
-
-    /* Styles des boutons de l'application */
     .stButton>button {{
-        width: 100%;
+        width: 100% !important;
         background-color: {config['btn_color']} !important;
         color: {config['btn_text_color']} !important;
-        font-size: 1.1rem !important;
-        font-weight: 700 !important;
-        padding: 16px 20px !important;
-        border-radius: 12px !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-        margin-bottom: 8px !important;
+        font-size: 1.05rem !important;
+        font-weight: 600 !important;
+        padding: 14px 20px !important;
+        border-radius: 8px !important;
+        border: none !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2) !important;
+        margin-bottom: 10px !important;
+        transition: transform 0.1s ease;
     }}
-
-    /* Cartes des exercices */
+    .stButton>button:hover {{
+        filter: brightness(1.1);
+    }}
     .exo-card {{
-        background: rgba(255, 255, 255, 0.07);
-        border-radius: 12px;
+        background-color: {config['card_bg']};
+        border-radius: 8px;
         padding: 16px;
-        margin-bottom: 14px;
-        border-left: 6px solid #90a955;
-        backdrop-filter: blur(5px);
+        margin-bottom: 12px;
+        border-left: 5px solid #2e7d32;
     }}
-    .exo-card-avants {{ border-left-color: #e76f51; }}
-    .exo-card-arrieres {{ border-left-color: #2a9d8f; }}
-    .exo-card-collectif {{ border-left-color: #e9c46a; }}
+    .exo-card-avants {{ border-left-color: #d32f2f; }}
+    .exo-card-arrieres {{ border-left-color: #0288d1; }}
+    .exo-card-collectif {{ border-left-color: #f57c00; }}
 
     #MainMenu {{visibility: hidden;}}
     footer {{visibility: hidden;}}
@@ -135,7 +141,7 @@ def save_exercice(exo):
     json.dump(data, f, ensure_ascii=False, indent=4)
 
 
-# --- EN-TÊTE DE L'ÉQUIPE ---
+# --- EN-TÊTE CENTRÉ ---
 st.markdown(
     f"""
     <div class="main-header">
@@ -147,40 +153,35 @@ st.markdown(
 )
 
 if config.get("logo_path") and os.path.exists(config["logo_path"]):
-  col_l1, col_l2, col_l3 = st.columns([2, 1, 2])
-  with col_l2:
-    st.image(config["logo_path"], use_container_width=True)
+  st.image(config["logo_path"], width=120)
 
 # -----------------------------------------------------------------------------
-# 1. PAGE D'ACCUEIL : LES BOUTONS EMPILÉS
+# 1. ACCUEIL
 # -----------------------------------------------------------------------------
 if st.session_state.page == "home":
   st.write("")
-  col_a, col_b, col_c = st.columns([1, 2, 1])
+  if st.button("📋 Créer une Séance", key="btn_seance"):
+    st.session_state.page = "seance"
+    st.rerun()
 
-  with col_b:
-    if st.button("📋 Créer une Séance", key="btn_seance"):
-      st.session_state.page = "seance"
-      st.rerun()
+  if st.button("📚 Banque d'Exercices", key="btn_banque"):
+    st.session_state.page = "banque"
+    st.rerun()
 
-    if st.button("📚 Banque d'Exercices", key="btn_banque"):
-      st.session_state.page = "banque"
-      st.rerun()
+  if st.button("➕ Ajouter un Exercice", key="btn_ajouter"):
+    st.session_state.page = "ajouter"
+    st.rerun()
 
-    if st.button("➕ Ajouter un Exercice", key="btn_ajouter"):
-      st.session_state.page = "ajouter"
-      st.rerun()
+  st.markdown(
+      "<hr style='border: none; border-top: 1px solid #333; margin: 20px"
+      " 0;'>",
+      unsafe_allow_html=True,
+  )
 
-    st.markdown(
-        "<br><hr style='border-color: rgba(255,255,255,0.2);'><br>",
-        unsafe_allow_html=True,
-    )
+  if st.button("⚙️ Paramètres", key="btn_params"):
+    st.session_state.page = "parametres"
+    st.rerun()
 
-    if st.button("⚙️ Paramètres", key="btn_params"):
-      st.session_state.page = "parametres"
-      st.rerun()
-
-# BOUTON RETOUR (sur toutes les sous-pages)
 if st.session_state.page != "home":
   if st.button("⬅️ Retour à l'accueil"):
     st.session_state.page = "home"
@@ -188,21 +189,16 @@ if st.session_state.page != "home":
   st.markdown("---")
 
 # -----------------------------------------------------------------------------
-# 2. PAGE : CRÉER UNE SÉANCE
+# 2. CRÉER UNE SÉANCE
 # -----------------------------------------------------------------------------
 if st.session_state.page == "seance":
   st.header("📋 Créer une Séance")
   data = load_data()
 
   if not data:
-    st.info(
-        "La banque d'exercices est vide. Ajoutez un premier exercice depuis"
-        " l'accueil !"
-    )
+    st.info("La banque d'exercices est vide. Ajoutez un exercice d'abord.")
   else:
-    titre_seance = st.text_input(
-        "Intitulé / Thème de la séance", "Séance de terrain"
-    )
+    titre_seance = st.text_input("Thème de la séance", "Séance du jour")
 
     exos_avants = [
         f"{e['titre']} [{e['type']}]"
@@ -220,62 +216,69 @@ if st.session_state.page == "seance":
         if e.get("groupe") == "Collectif"
     ]
 
-    st.subheader("1. Ateliers Séparés (Simultanés)")
-    col_av, col_arr = st.columns(2)
-    with col_av:
-      sel_avant = st.selectbox(
-          "🐗 Groupe Avants", ["Aucun"] + exos_avants, key="sel_av"
-      )
-    with col_arr:
-      sel_arriere = st.selectbox(
-          "⚡ Groupe Arrières", ["Aucun"] + exos_arrieres, key="sel_arr"
-      )
-
+    st.subheader("1. Ateliers Séparés")
+    sel_avant = st.selectbox(
+        "🐗 Groupe Avants", ["Aucun"] + exos_avants, key="sel_av"
+    )
+    sel_arriere = st.selectbox(
+        "⚡ Groupe Arrières", ["Aucun"] + exos_arrieres, key="sel_arr"
+    )
     duree_ateliers = st.number_input(
         "Durée du bloc ateliers (min)", min_value=0, max_value=60, value=20
     )
 
     st.subheader("2. Séquences Collectives")
     sel_collectifs = st.multiselect(
-        "🤝 Exercices Collectifs (Tout le groupe) :", exos_collectif
+        "🤝 Exercices Collectifs :", exos_collectif
     )
 
     st.markdown("---")
     st.markdown("### 📄 Déroulé de la séance")
-
     total_duration = 0
 
     if sel_avant != "Aucun" or sel_arriere != "Aucun":
       st.markdown(f"#### ⏱️ Ateliers Séparés — **{duree_ateliers} min**")
-      c1, c2 = st.columns(2)
-      with c1:
-        if sel_avant != "Aucun":
-          titre_clean = sel_avant.split(" [")[0]
-          exo = next(e for e in data if e["titre"] == titre_clean)
-          st.markdown(
-              f"""
+
+      if sel_avant != "Aucun":
+        titre_clean = sel_avant.split(" [")[0]
+        exo = next(e for e in data if e["titre"] == titre_clean)
+        st.markdown(
+            f"""
             <div class='exo-card exo-card-avants'>
-                <strong style='color:#e76f51;'>🐗 Avants : {exo['titre']}</strong><br>
-                <small>{exo['type']} | Espace/Matériel : {exo['espace']}</small><br><br>
+                <strong style='color:#ef5350;'>🐗 Avants : {exo['titre']}</strong><br>
+                <small>{exo['type']} | Espace : {exo['espace']}</small><br><br>
                 {exo['consignes']}
             </div>
             """,
-              unsafe_allow_html=True,
+            unsafe_allow_html=True,
+        )
+        if exo.get("image_path") and os.path.exists(exo["image_path"]):
+          st.image(
+              exo["image_path"],
+              caption=f"Schéma : {exo['titre']}",
+              use_container_width=True,
           )
-      with c2:
-        if sel_arriere != "Aucun":
-          titre_clean = sel_arriere.split(" [")[0]
-          exo = next(e for e in data if e["titre"] == titre_clean)
-          st.markdown(
-              f"""
+
+      if sel_arriere != "Aucun":
+        titre_clean = sel_arriere.split(" [")[0]
+        exo = next(e for e in data if e["titre"] == titre_clean)
+        st.markdown(
+            f"""
             <div class='exo-card exo-card-arrieres'>
-                <strong style='color:#2a9d8f;'>⚡ Arrières : {exo['titre']}</strong><br>
-                <small>{exo['type']} | Espace/Matériel : {exo['espace']}</small><br><br>
+                <strong style='color:#29b6f6;'>⚡ Arrières : {exo['titre']}</strong><br>
+                <small>{exo['type']} | Espace : {exo['espace']}</small><br><br>
                 {exo['consignes']}
             </div>
             """,
-              unsafe_allow_html=True,
+            unsafe_allow_html=True,
+        )
+        if exo.get("image_path") and os.path.exists(exo["image_path"]):
+          st.image(
+              exo["image_path"],
+              caption=f"Schéma : {exo['titre']}",
+              use_container_width=True,
           )
+
       total_duration += duree_ateliers
 
     if sel_collectifs:
@@ -283,43 +286,44 @@ if st.session_state.page == "seance":
       for idx, item in enumerate(sel_collectifs):
         titre_clean = item.split(" [")[0]
         exo = next(e for e in data if e["titre"] == titre_clean)
-        col_a, col_b = st.columns([3, 1])
-        with col_a:
-          st.markdown(
-              f"""
+        st.markdown(
+            f"""
             <div class='exo-card exo-card-collectif'>
-                <strong style='color:#e9c46a;'>{idx+1}. {exo['titre']}</strong> ({exo['type']})<br>
-                <small>Espace/Matériel : {exo['espace']}</small><br><br>
+                <strong style='color:#ffa726;'>{idx+1}. {exo['titre']}</strong> ({exo['type']})<br>
+                <small>Espace : {exo['espace']}</small><br><br>
                 {exo['consignes']}
             </div>
             """,
-              unsafe_allow_html=True,
+            unsafe_allow_html=True,
+        )
+        if exo.get("image_path") and os.path.exists(exo["image_path"]):
+          st.image(
+              exo["image_path"],
+              caption=f"Schéma : {exo['titre']}",
+              use_container_width=True,
           )
-        with col_b:
-          dur = st.number_input(
-              "Durée (min)", value=int(exo["duree"]), key=f"dur_coll_{idx}"
-          )
-          total_duration += dur
+
+        dur = st.number_input(
+            f"Durée {exo['titre']} (min)",
+            value=int(exo["duree"]),
+            key=f"dur_coll_{idx}",
+        )
+        total_duration += dur
 
     st.metric("Durée Totale Estimée", f"{total_duration} min")
 
 # -----------------------------------------------------------------------------
-# 3. PAGE : BANQUE D'EXERCICES
+# 3. BANQUE D'EXERCICES
 # -----------------------------------------------------------------------------
 elif st.session_state.page == "banque":
   st.header("📚 Banque d'Exercices")
   data = load_data()
 
   if data:
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
-      grp_filter = st.selectbox(
-          "Filtrer par Groupe :", ["Tous"] + CATEGORIES_GROUPE
-      )
-    with col_f2:
-      type_filter = st.selectbox(
-          "Filtrer par Type :", ["Tous"] + TYPES_EXERCICE
-      )
+    grp_filter = st.selectbox(
+        "Filtrer par Groupe :", ["Tous"] + CATEGORIES_GROUPE
+    )
+    type_filter = st.selectbox("Filtrer par Type :", ["Tous"] + TYPES_EXERCICE)
 
     filtered_data = data
     if grp_filter != "Tous":
@@ -345,29 +349,49 @@ elif st.session_state.page == "banque":
         st.write(f"**Espace / Matériel :** {exo['espace']}")
         st.write(f"**Consignes :** {exo['consignes']}")
 
+        if exo.get("image_path") and os.path.exists(exo["image_path"]):
+          st.image(
+              exo["image_path"],
+              caption=f"Schéma de {exo['titre']}",
+              use_container_width=True,
+          )
+
 # -----------------------------------------------------------------------------
-# 4. PAGE : AJOUTER UN EXERCICE
+# 4. AJOUTER UN EXERCICE (AVEC IMAGE)
 # -----------------------------------------------------------------------------
 elif st.session_state.page == "ajouter":
-  st.header("➕ Ajouter un nouvel exercice")
+  st.header("➕ Ajouter un exercice")
 
   with st.form("form_add_exo", clear_on_submit=True):
     titre = st.text_input("Nom de l'exercice")
-    col1, col2 = st.columns(2)
-    with col1:
-      groupe = st.selectbox("Groupe", CATEGORIES_GROUPE)
-    with col2:
-      type_exo = st.selectbox("Type d'exercice", TYPES_EXERCICE)
-
+    groupe = st.selectbox("Groupe", CATEGORIES_GROUPE)
+    type_exo = st.selectbox("Type d'exercice", TYPES_EXERCICE)
     duree = st.number_input(
         "Durée conseillée (minutes)", min_value=5, max_value=60, value=15
     )
     espace = st.text_input("Terrain / Matériel requis")
     consignes = st.text_area("Consignes & Règles du jeu")
 
-    submitted = st.form_submit_button("💾 Enregistrer dans la banque")
+    # Champ d'importation de l'image
+    uploaded_file = st.file_uploader(
+        "Schéma ou image d'illustration (optionnel)",
+        type=["png", "jpg", "jpeg"],
+    )
+
+    submitted = st.form_submit_button("💾 Enregistrer")
 
     if submitted and titre:
+      image_path = None
+
+      # Sauvegarde de l'image si importée
+      if uploaded_file is not None:
+        filename = (
+            f"{titre.lower().replace(' ', '_')}_{uploaded_file.name[-8:]}"
+        )
+        image_path = os.path.join(IMAGE_DIR, filename)
+        with open(image_path, "wb") as f:
+          f.write(uploaded_file.getbuffer())
+
       new_exo = {
           "titre": titre,
           "groupe": groupe,
@@ -375,53 +399,43 @@ elif st.session_state.page == "ajouter":
           "duree": duree,
           "espace": espace,
           "consignes": consignes,
+          "image_path": image_path,
       }
       save_exercice(new_exo)
-      st.success(f"L'exercice '{titre}' a été ajouté à la banque !")
+      st.success(f"L'exercice '{titre}' a été ajouté avec succès !")
 
 # -----------------------------------------------------------------------------
-# 5. PAGE : PARAMÈTRES ET PERSONNALISATION
+# 5. PARAMÈTRES
 # -----------------------------------------------------------------------------
 elif st.session_state.page == "parametres":
-  st.header("⚙️ Paramètres & Personnalisation")
+  st.header("⚙️ Paramètres")
 
   with st.form("form_config"):
     nom_equipe = st.text_input(
         "Nom de l'équipe / du club", value=config["nom_equipe"]
     )
 
-    st.subheader("🎨 Couleurs de l'application")
-    col_c1, col_c2 = st.columns(2)
-    with col_c1:
-      bg1 = st.color_picker(
-          "Couleur de fond (Haut)", value=config["bg_color_1"]
-      )
-      bg2 = st.color_picker(
-          "Couleur de fond (Milieu)", value=config["bg_color_2"]
-      )
-      bg3 = st.color_picker(
-          "Couleur de fond (Bas)", value=config["bg_color_3"]
-      )
-    with col_c2:
-      btn_col = st.color_picker(
-          "Couleur des boutons", value=config["btn_color"]
-      )
-      btn_txt = st.color_picker(
-          "Couleur du texte des boutons", value=config["btn_text_color"]
-      )
+    st.subheader("🎨 Couleurs")
+    bg_color = st.color_picker("Couleur de fond", value=config["bg_color"])
+    card_bg = st.color_picker(
+        "Couleur de fond des cartes", value=config["card_bg"]
+    )
+    btn_col = st.color_picker("Couleur des boutons", value=config["btn_color"])
+    btn_txt = st.color_picker(
+        "Couleur du texte des boutons", value=config["btn_text_color"]
+    )
 
     st.subheader("🖼️ Logo du club")
     uploaded_logo = st.file_uploader(
-        "Importer une image de logo (PNG, JPG)", type=["png", "jpg", "jpeg"]
+        "Importer un logo", type=["png", "jpg", "jpeg"]
     )
 
-    save_btn = st.form_submit_button("💾 Enregistrer les modifications")
+    save_btn = st.form_submit_button("💾 Enregistrer")
 
     if save_btn:
       config["nom_equipe"] = nom_equipe
-      config["bg_color_1"] = bg1
-      config["bg_color_2"] = bg2
-      config["bg_color_3"] = bg3
+      config["bg_color"] = bg_color
+      config["card_bg"] = card_bg
       config["btn_color"] = btn_col
       config["btn_text_color"] = btn_txt
 
@@ -432,5 +446,5 @@ elif st.session_state.page == "parametres":
         config["logo_path"] = logo_filename
 
       save_config(config)
-      st.success("Paramètres enregistrés avec succès !")
+      st.success("Paramètres mis à jour !")
       st.rerun()
