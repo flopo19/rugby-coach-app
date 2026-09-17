@@ -74,7 +74,7 @@ if "seance_blocks" not in st.session_state:
 
 config = load_config()
 
-# --- STYLES CSS SOBRES ET LISIBLES ---
+# --- STYLES CSS SOBRES ET HAUT CONTRASTE ---
 st.markdown(
     """
     <style>
@@ -140,19 +140,23 @@ st.markdown(
         border-color: #ffffff !important;
     }
 
-    /* Style spécifique pour le bouton de soumission de formulaire */
+    /* CONTRASTE MAXIMUM POUR LE BOUTON D'ENREGISTREMENT */
     div[data-testid="stFormSubmitButton"] > button {
         background-color: #ffffff !important;
         color: #000000 !important;
-        font-size: 1.05rem !important;
-        font-weight: 700 !important;
-        border: 1px solid #ffffff !important;
-        padding: 12px 16px !important;
-        margin-top: 10px !important;
+        font-size: 1.1rem !important;
+        font-weight: 800 !important;
+        border: 2px solid #ffffff !important;
+        padding: 14px 20px !important;
+        margin-top: 15px !important;
+        border-radius: 6px !important;
+    }
+    div[data-testid="stFormSubmitButton"] > button * {
+        color: #000000 !important;
     }
     div[data-testid="stFormSubmitButton"] > button:hover {
-        background-color: #cccccc !important;
-        color: #000000 !important;
+        background-color: #dddddd !important;
+        border-color: #dddddd !important;
     }
 
     .exo-card {
@@ -190,7 +194,7 @@ st.markdown(
 )
 
 # -----------------------------------------------------------------------------
-# NAVIGATION ACCUEIL / RETOUR
+# NAVIGATION
 # -----------------------------------------------------------------------------
 if st.session_state.page == "home":
   st.write("")
@@ -232,11 +236,11 @@ if st.session_state.page != "home":
 # 1. BANQUE D'EXERCICES
 # -----------------------------------------------------------------------------
 if st.session_state.page == "banque":
-  col_title, col_add = st.columns([2, 1])
+  col_title, col_add = st.columns([1.8, 1.2])
   with col_title:
     st.subheader("📚 Banque d'Exercices")
   with col_add:
-    if st.button("➕ Cet exercice", key="btn_add_from_bank"):
+    if st.button("➕ Ajouter un exercice", key="btn_add_from_bank"):
       st.session_state.edit_exo_idx = None
       st.session_state.page = "ajouter"
       st.rerun()
@@ -276,7 +280,7 @@ if st.session_state.page == "banque":
             st.session_state.page = "ajouter"
             st.rerun()
         with c2:
-          if st.button("🗑️ Supprimer", key=f"del_{real_idx}"):
+          if st.button("🗑️ Supprimer l'exercice", key=f"del_{real_idx}"):
             if exo.get("image_path") and os.path.exists(exo["image_path"]):
               try:
                 os.remove(exo["image_path"])
@@ -290,7 +294,7 @@ if st.session_state.page == "banque":
     st.info("Aucun exercice enregistré pour le moment.")
 
 # -----------------------------------------------------------------------------
-# 2. CRÉER / MODIFIER UN EXERCICE
+# 2. CREER / MODIFIER UN EXERCICE
 # -----------------------------------------------------------------------------
 elif st.session_state.page == "ajouter":
   data = load_data()
@@ -346,9 +350,9 @@ elif st.session_state.page == "ajouter":
     )
 
     btn_label = (
-        "💾 Mettre à jour l'exercice"
+        "💾 METTRE À JOUR L'EXERCICE"
         if is_editing
-        else "💾 Enregistrer l'exercice"
+        else "💾 ENREGISTRER L'EXERCICE"
     )
     submitted = st.form_submit_button(btn_label)
 
@@ -392,7 +396,7 @@ elif st.session_state.page == "ajouter":
       st.rerun()
 
 # -----------------------------------------------------------------------------
-# 3. CRÉATION DE SÉANCE SÉQUENTIELLE & LIBRE
+# 3. CRÉATION DE SÉANCE SÉQUENTIELLE
 # -----------------------------------------------------------------------------
 elif st.session_state.page == "seance":
   st.subheader("📋 Créer une Séance Libre")
@@ -402,24 +406,28 @@ elif st.session_state.page == "seance":
     st.info("La banque d'exercices est vide. Ajoutez d'abord des exercices.")
   else:
     titre_seance = st.text_input("Thème de la séance", "Séance du jour")
-
     titles_list = [f"{e['titre']} [{e['type']}]" for e in data]
 
-    st.markdown("### 1. Construction de la séquence")
+    st.markdown("### 1. Sélection et ordonnancement")
 
-    # Bouton pour ajouter un bloc dans la séance
-    if st.button("➕ Ajouter une étape / un atelier"):
-      st.session_state.seance_blocks.append({
-          "exo_title": titles_list[0],
-          "duree": 15,
-          "groupe_custom": "Tout le groupe",
-      })
-      st.rerun()
+    col_btn_add, col_btn_clear = st.columns([2, 1])
+    with col_btn_add:
+      if st.button("➕ Ajouter un exercice à la séance"):
+        st.session_state.seance_blocks.append({
+            "exo_title": titles_list[0],
+            "duree": 15,
+            "groupe_custom": "Tout le groupe",
+        })
+        st.rerun()
 
-    # Gestion des blocs de la séance
+    with col_btn_clear:
+      if st.session_state.seance_blocks and st.button("➖ Vider la séance"):
+        st.session_state.seance_blocks = []
+        st.rerun()
+
     blocks_to_remove = []
     for idx, block in enumerate(st.session_state.seance_blocks):
-      st.markdown(f"--- **Étape {idx+1}** ---")
+      st.markdown(f"--- **Exercice {idx+1}** ---")
       c_exo, c_grp, c_dur = st.columns([3, 2, 2])
 
       with c_exo:
@@ -429,7 +437,7 @@ elif st.session_state.page == "seance":
             else 0
         )
         block["exo_title"] = st.selectbox(
-            f"Exercice", titles_list, index=sel_idx, key=f"blk_exo_{idx}"
+            "Exercice", titles_list, index=sel_idx, key=f"blk_exo_{idx}"
         )
 
       with c_grp:
@@ -473,7 +481,7 @@ elif st.session_state.page == "seance":
           st.rerun()
 
       with col_del:
-        if st.button("🗑️ Enlever", key=f"rm_{idx}"):
+        if st.button("➖ Retirer de la séance", key=f"rm_{idx}"):
           blocks_to_remove.append(idx)
 
     if blocks_to_remove:
@@ -481,7 +489,6 @@ elif st.session_state.page == "seance":
         st.session_state.seance_blocks.pop(b_idx)
       st.rerun()
 
-    # Affichage récapitulatif
     st.markdown("---")
     st.markdown(f"### 📄 Déroulé : {titre_seance}")
 
@@ -513,7 +520,10 @@ elif st.session_state.page == "seance":
 
       st.metric("Durée Totale de la Séance", f"{total_duree} min")
     else:
-      st.info("Cliquez sur 'Ajouter une étape' pour construire votre séance.")
+      st.info(
+          "Cliquez sur 'Ajouter un exercice à la séance' pour composer votre"
+          " programme."
+      )
 
 # -----------------------------------------------------------------------------
 # 4. PARAMÈTRES
@@ -525,7 +535,7 @@ elif st.session_state.page == "parametres":
     nom_equipe = st.text_input(
         "Nom du club / de l'équipe", value=config["nom_equipe"]
     )
-    save_btn = st.form_submit_button("💾 Enregistrer la configuration")
+    save_btn = st.form_submit_button("💾 ENREGISTRER LA CONFIGURATION")
 
     if save_btn:
       config["nom_equipe"] = nom_equipe
